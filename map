@@ -119,6 +119,8 @@ BOUNDARY_LOAD_ERRORS = tuple(BOUNDARY_LOAD_ERRORS)
 BOUNDARY_READ_ERRORS = tuple(
     error_type for error_type in BOUNDARY_LOAD_ERRORS if error_type is not BoundaryDataError
 )
+LITHUANIA_NAMES = {"lithuania"}
+LITHUANIA_CODES = {"ltu"}
 
 
 def _filter_lithuania_boundary(data, source):
@@ -135,11 +137,21 @@ def _filter_lithuania_boundary(data, source):
     ):
         if column in data.columns:
             matched_column = True
-            lithuania = data[data[column] == "Lithuania"]
+            normalized_values = data[column].fillna("").astype(str).str.strip().str.casefold()
+            lithuania = data[normalized_values.isin(LITHUANIA_NAMES)]
             if not lithuania.empty:
                 return lithuania
     if len(data) == 1 and source == LITHUANIA_GEOJSON_URL:
-        return data
+        for column in ("id", "ID", "iso_a3", "ISO_A3", "ADM0_A3"):
+            if column in data.columns:
+                normalized_value = (
+                    str(data.iloc[0][column]).strip().casefold()
+                )
+                if normalized_value in LITHUANIA_NAMES | LITHUANIA_CODES:
+                    return data
+        raise BoundaryDataError(
+            f"Single-feature Lithuania fallback could not be verified for source: {source}"
+        )
     if matched_column:
         raise BoundaryDataError(
             f"Lithuania boundary was not found in boundary source: {source}"
