@@ -173,13 +173,18 @@ def _load_lithuania_boundary_from_remote_sources():
     last_error = BoundaryDataError(
         "Unable to load Lithuania boundary from online sources."
     )
+    errors = []
     for source in (NATURAL_EARTH_COUNTRIES_URL, LITHUANIA_GEOJSON_URL):
         try:
             candidate = gpd.read_file(source)
             return _filter_lithuania_boundary(candidate, source)
         except BOUNDARY_LOAD_ERRORS as error:
             last_error = error
-    raise last_error
+            errors.append(f"{source}: {error}")
+    raise BoundaryDataError(
+        "Unable to load Lithuania boundary from online sources. Attempts: "
+        + " | ".join(errors)
+    ) from last_error
 
 
 try:
