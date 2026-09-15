@@ -13,6 +13,16 @@ import contextily as ctx
 from PIL import Image
 import io
 
+try:
+    from fiona.errors import DriverError, FionaValueError
+except ImportError:
+    DriverError = FionaValueError = None
+
+try:
+    from pyogrio.errors import DataSourceError
+except ImportError:
+    DataSourceError = None
+
 # 1) YOUR DATA - Grouped by lake with adjusted positions for labels
 # ------------------------------------------------------------------
 LAKES = [
@@ -87,13 +97,106 @@ BOX_OFFSETS = {
 # ------------------------------------------------------------------
 # 4) Load Lithuania boundary
 # ------------------------------------------------------------------
+NATURAL_EARTH_COUNTRIES_URL = (
+    "https://naturalearth.s3.amazonaws.com/110m_cultural/"
+    "ne_110m_admin_0_countries.zip"
+)
+LITHUANIA_GEOJSON_URL = (
+    "https://raw.githubusercontent.com/johan/world.geo.json/master/"
+    "countries/LTU.geo.json"
+)
+
+
+class BoundaryDataError(Exception):
+    pass
+
+
+BOUNDARY_LOAD_ERRORS = [OSError, BoundaryDataError]
+for error_type in (DriverError, FionaValueError, DataSourceError):
+    if error_type is not None and error_type not in BOUNDARY_LOAD_ERRORS:
+        BOUNDARY_LOAD_ERRORS.append(error_type)
+BOUNDARY_LOAD_ERRORS = tuple(BOUNDARY_LOAD_ERRORS)
+BOUNDARY_READ_ERRORS = tuple(
+    error_type for error_type in BOUNDARY_LOAD_ERRORS if error_type is not BoundaryDataError
+)
+LITHUANIA_NAMES = {"lithuania"}
+LITHUANIA_CODES = {"ltu"}
+
+
+def _filter_lithuania_boundary(data, source):
+    """Return Lithuania rows from a boundary dataset or raise BoundaryDataError.
+
+    Supports common country-name columns and, for the one-feature LTU GeoJSON
+    fallback only, accepts ISO-style Lithuania identifiers. Raises
+    BoundaryDataError when the dataset schema is unsupported or Lithuania
+    cannot be verified in the provided source.
+    """
+    matched_column = False
+    for column in (
+        "ADMIN",
+        "admin",
+        "NAME",
+        "name",
+        "NAME_EN",
+        "SOVEREIGNT",
+        "NAME_LONG",
+        "BRK_NAME",
+    ):
+        if column in data.columns:
+            matched_column = True
+            normalized_values = data[column].fillna("").astype(str).str.strip().str.casefold()
+            lithuania = data[normalized_values.isin(LITHUANIA_NAMES)]
+            if not lithuania.empty:
+                return lithuania
+    if len(data) == 1 and source == LITHUANIA_GEOJSON_URL:
+        for column in ("id", "ID", "iso_a3", "ISO_A3", "ADM0_A3"):
+            if column in data.columns:
+                normalized_value = (
+                    str(data.iloc[0][column]).strip().casefold()
+                )
+                if normalized_value in LITHUANIA_NAMES | LITHUANIA_CODES:
+                    return data
+        raise BoundaryDataError(
+            f"Single-feature Lithuania fallback could not be verified for source: {source}"
+        )
+    if matched_column:
+        raise BoundaryDataError(
+            f"Lithuania boundary was not found in boundary source: {source}"
+        )
+    raise BoundaryDataError(
+        f"No supported Lithuania boundary column found in boundary source: {source}"
+    )
+
+
+def _load_lithuania_boundary_from_remote_sources():
+    print("Loading Lithuania boundary from online sources...")
+    last_error = BoundaryDataError(
+        "Unable to load Lithuania boundary from online sources."
+    )
+    errors = []
+    for source in (NATURAL_EARTH_COUNTRIES_URL, LITHUANIA_GEOJSON_URL):
+        try:
+            candidate = gpd.read_file(source)
+            return _filter_lithuania_boundary(candidate, source)
+        except BOUNDARY_LOAD_ERRORS as error:
+            last_error = error
+            errors.append(f"{source}: {error}")
+    raise BoundaryDataError(
+        "Unable to load Lithuania boundary from online sources. Attempts: "
+        + " | ".join(errors)
+    ) from last_error
+
+
 try:
     lithuania = gpd.read_file("baltic_context.geojson")
-    lithuania = lithuania[lithuania["ADMIN"] == "Lithuania"]
-except:
-    print("Loading Lithuania boundary from Natural Earth...")
-    world = gpd.read_file(gpd.datasets.get_path("naturalearth_lowres"))
-    lithuania = world[world["name"] == "Lithuania"]
+except BOUNDARY_READ_ERRORS:
+    lithuania = _load_lithuania_boundary_from_remote_sources()
+else:
+    try:
+        lithuania = _filter_lithuania_boundary(lithuania, "baltic_context.geojson")
+    except BoundaryDataError as error:
+        print(f"Local Lithuania boundary is invalid: {error}")
+        lithuania = _load_lithuania_boundary_from_remote_sources()
 
 # Convert to Web Mercator for contextily
 lithuania_web = lithuania.to_crs(epsg=3857)
