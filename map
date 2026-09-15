@@ -113,7 +113,7 @@ class BoundaryDataError(Exception):
 
 BOUNDARY_LOAD_ERRORS = [OSError, BoundaryDataError]
 for error_type in (DriverError, FionaValueError, DataSourceError):
-    if error_type is not None:
+    if error_type is not None and error_type not in BOUNDARY_LOAD_ERRORS:
         BOUNDARY_LOAD_ERRORS.append(error_type)
 BOUNDARY_LOAD_ERRORS = tuple(BOUNDARY_LOAD_ERRORS)
 BOUNDARY_READ_ERRORS = tuple(
