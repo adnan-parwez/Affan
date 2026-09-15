@@ -194,7 +194,8 @@ except BOUNDARY_READ_ERRORS:
 else:
     try:
         lithuania = _filter_lithuania_boundary(lithuania, "baltic_context.geojson")
-    except BoundaryDataError:
+    except BoundaryDataError as error:
+        print(f"Local Lithuania boundary is invalid: {error}")
         lithuania = _load_lithuania_boundary_from_remote_sources()
 
 # Convert to Web Mercator for contextily
