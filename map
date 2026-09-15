@@ -97,7 +97,11 @@ LITHUANIA_GEOJSON_URL = (
 )
 
 
-def _filter_lithuania_boundary(data):
+class BoundaryDataError(Exception):
+    pass
+
+
+def _filter_lithuania_boundary(data, source):
     matched_column = False
     for column in (
         "ADMIN",
@@ -117,21 +121,28 @@ def _filter_lithuania_boundary(data):
     if len(data) == 1:
         return data
     if matched_column:
-        raise ValueError("Lithuania boundary was not found in the provided dataset.")
-    raise KeyError("No supported Lithuania boundary column found in dataset.")
+        raise BoundaryDataError(
+            f"Lithuania boundary was not found in boundary source: {source}"
+        )
+    raise BoundaryDataError(
+        f"No supported Lithuania boundary column found in boundary source: {source}"
+    )
 
 
 try:
-    lithuania = _filter_lithuania_boundary(gpd.read_file("baltic_context.geojson"))
-except Exception:
+    lithuania = _filter_lithuania_boundary(
+        gpd.read_file("baltic_context.geojson"), "baltic_context.geojson"
+    )
+except (OSError, BoundaryDataError):
     print("Loading Lithuania boundary from online sources...")
     last_error = None
     for source in (NATURAL_EARTH_COUNTRIES_URL, LITHUANIA_GEOJSON_URL):
         try:
-            lithuania = _filter_lithuania_boundary(gpd.read_file(source))
-            break
-        except Exception as error:
+            lithuania = _filter_lithuania_boundary(gpd.read_file(source), source)
+        except (OSError, BoundaryDataError) as error:
             last_error = error
+        else:
+            break
     else:
         raise last_error
 
