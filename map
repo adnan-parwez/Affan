@@ -124,6 +124,13 @@ LITHUANIA_CODES = {"ltu"}
 
 
 def _filter_lithuania_boundary(data, source):
+    """Return Lithuania rows from a boundary dataset or raise BoundaryDataError.
+
+    Supports common country-name columns and, for the one-feature LTU GeoJSON
+    fallback only, accepts ISO-style Lithuania identifiers. Raises
+    BoundaryDataError when the dataset schema is unsupported or Lithuania
+    cannot be verified in the provided source.
+    """
     matched_column = False
     for column in (
         "ADMIN",
@@ -170,10 +177,11 @@ except BOUNDARY_READ_ERRORS:
     )
     for source in (NATURAL_EARTH_COUNTRIES_URL, LITHUANIA_GEOJSON_URL):
         try:
-            lithuania = _filter_lithuania_boundary(gpd.read_file(source), source)
-        except BOUNDARY_LOAD_ERRORS as error:
+            candidate = gpd.read_file(source)
+        except BOUNDARY_READ_ERRORS as error:
             last_error = error
         else:
+            lithuania = _filter_lithuania_boundary(candidate, source)
             break
     else:
         raise last_error
