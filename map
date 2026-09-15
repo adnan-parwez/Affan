@@ -165,7 +165,9 @@ try:
     lithuania = gpd.read_file("baltic_context.geojson")
 except BOUNDARY_READ_ERRORS:
     print("Loading Lithuania boundary from online sources...")
-    last_error = None
+    last_error = BoundaryDataError(
+        "Unable to load Lithuania boundary from online sources."
+    )
     for source in (NATURAL_EARTH_COUNTRIES_URL, LITHUANIA_GEOJSON_URL):
         try:
             lithuania = _filter_lithuania_boundary(gpd.read_file(source), source)
