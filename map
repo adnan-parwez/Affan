@@ -13,6 +13,16 @@ import contextily as ctx
 from PIL import Image
 import io
 
+try:
+    from fiona.errors import DriverError, FionaValueError
+except ImportError:
+    DriverError = FionaValueError = None
+
+try:
+    from pyogrio.errors import DataSourceError
+except ImportError:
+    DataSourceError = None
+
 # 1) YOUR DATA - Grouped by lake with adjusted positions for labels
 # ------------------------------------------------------------------
 LAKES = [
@@ -101,6 +111,13 @@ class BoundaryDataError(Exception):
     pass
 
 
+BOUNDARY_LOAD_ERRORS = [OSError, BoundaryDataError]
+for error_type in (DriverError, FionaValueError, DataSourceError):
+    if error_type is not None:
+        BOUNDARY_LOAD_ERRORS.append(error_type)
+BOUNDARY_LOAD_ERRORS = tuple(BOUNDARY_LOAD_ERRORS)
+
+
 def _filter_lithuania_boundary(data, source):
     matched_column = False
     for column in (
@@ -118,7 +135,7 @@ def _filter_lithuania_boundary(data, source):
             lithuania = data[data[column] == "Lithuania"]
             if not lithuania.empty:
                 return lithuania
-    if len(data) == 1:
+    if len(data) == 1 and source == LITHUANIA_GEOJSON_URL:
         return data
     if matched_column:
         raise BoundaryDataError(
@@ -133,13 +150,13 @@ try:
     lithuania = _filter_lithuania_boundary(
         gpd.read_file("baltic_context.geojson"), "baltic_context.geojson"
     )
-except (OSError, BoundaryDataError):
+except BOUNDARY_LOAD_ERRORS:
     print("Loading Lithuania boundary from online sources...")
     last_error = None
     for source in (NATURAL_EARTH_COUNTRIES_URL, LITHUANIA_GEOJSON_URL):
         try:
             lithuania = _filter_lithuania_boundary(gpd.read_file(source), source)
-        except (OSError, BoundaryDataError) as error:
+        except BOUNDARY_LOAD_ERRORS as error:
             last_error = error
         else:
             break
