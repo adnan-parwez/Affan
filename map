@@ -1,0 +1,397 @@
+"""
+lithuania_lakes_map.py
+------------------------
+Creates a publication-ready map of Lithuanian lake sampling sites
+with OpenStreetMap tiles for realistic styling.
+"""
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.lines import Line2D
+import numpy as np
+import contextily as ctx
+from PIL import Image
+import io
+
+# 1) YOUR DATA - Grouped by lake with adjusted positions for labels
+# ------------------------------------------------------------------
+LAKES = [
+    ("Kaunas Reservoir", 54.884448, 24.061832),
+    ("Curonian Lagoon", 55.440557, 21.110184),
+    ("Kiementas", 55.81589, 25.262899),
+    ("Širvys", 54.987044, 25.214567),
+    ("Gineitiškes", 54.737500, 25.185000),
+    ("Simnas", 54.398944, 23.632183),
+    ("Parsezeris Lake", 55.635900, 22.285179),
+    ("Didžiulis", 54.685278, 25.041111),
+    ("Pastrevis Lake", 54.784753, 24.518628)  
+]
+
+# ------------------------------------------------------------------
+# 2) Additional information for each lake
+# ------------------------------------------------------------------
+LAKE_INFO = {
+    'Kaunas Reservoir': {
+        'Number of sites': '3',
+        'Samples': 37
+    },
+    'Curonian Lagoon': {
+        'Number of sites': '4',
+        'Samples': 17
+    },
+    'Kiementas': {
+        'Number of sites': '1',
+        'Samples': 1
+    },
+    'Širvys': {
+        'Number of sites': '1',
+        'Samples': 1
+    },
+    'Gineitiškes': {
+        'Number of sites': '1',
+        'Samples': 1
+    },
+    'Simnas': {
+        'Number of sites': '1',
+        'Samples': 1
+    },
+    'Parsezeris Lake': {
+        'Number of sites': '1',
+        'Samples': 1
+    },
+    'Didžiulis': {
+        'Number of sites': '1',
+        'Samples': 1
+    },
+    'Pastrevis Lake': {
+        'Number of sites': '1',
+        'Samples': 1
+    }
+}
+
+# ------------------------------------------------------------------
+# 3) Box offsets for information boxes
+# ------------------------------------------------------------------
+BOX_OFFSETS = {
+    'Gineitiškes': (30, 10),
+    'Didžiulis': (-100, -30),
+    'Pastrevis Lake': (-35, 75),
+    'Širvys': (-20, 80),
+    'Simnas': (-90, -30),
+    'Kaunas Reservoir': (-145, 10),
+    'Curonian Lagoon': (-50, 75),
+    'Kiementas': (-10, 75),
+    'Parsezeris Lake': (-10, 75),
+}
+
+# ------------------------------------------------------------------
+# 4) Load Lithuania boundary
+# ------------------------------------------------------------------
+try:
+    lithuania = gpd.read_file("baltic_context.geojson")
+    lithuania = lithuania[lithuania["ADMIN"] == "Lithuania"]
+except:
+    print("Loading Lithuania boundary from Natural Earth...")
+    world = gpd.read_file(gpd.datasets.get_path("naturalearth_lowres"))
+    lithuania = world[world["name"] == "Lithuania"]
+
+# Convert to Web Mercator for contextily
+lithuania_web = lithuania.to_crs(epsg=3857)
+
+# ------------------------------------------------------------------
+# 5) Create the main map
+# ------------------------------------------------------------------
+fig, ax = plt.subplots(figsize=(16, 14), dpi=300)
+
+# Add OpenStreetMap tiles
+ctx.add_basemap(
+    ax,
+    crs=lithuania_web.crs,
+    source=ctx.providers.OpenStreetMap.Mapnik,
+    zoom=8,
+    alpha=0.95
+)
+
+# Plot Lithuania boundary with custom style
+lithuania_web.plot(
+    ax=ax, 
+    facecolor='none',
+    edgecolor='#1a1a1a',
+    linewidth=2.5,
+    alpha=0.8
+)
+
+ax.set_axis_off()
+
+# Define colors for lakes
+lake_colors = {
+    'Kaunas Reservoir': '#E63946',      # Red
+    'Curonian Lagoon': '#1E88E5',       # Bright Blue
+    'Kiementas': '#2A9D8F',             # Teal
+    'Širvys': '#9B5DE5',                # Purple
+    'Gineitiškes': '#F4A261',           # Orange
+    'Simnas': "#1C24B9",                # Navy Blue
+    'Parsezeris Lake': '#00B4D8',       # Light blue
+    'Didžiulis': "#51DD4C",             # Green
+    'Pastrevis Lake': "#FF6BCB",        # Pink
+}
+
+# Convert lake coordinates to Web Mercator for plotting
+from pyproj import Transformer
+transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+
+# ------------------------------------------------------------------
+# 6) Plot lakes with markers and information boxes
+# ------------------------------------------------------------------
+for lake, lat, lon in LAKES:
+    # Convert to Web Mercator
+    web_lon, web_lat = transformer.transform(lon, lat)
+    
+    color = lake_colors.get(lake, '#333333')
+    info = LAKE_INFO.get(lake, {})
+    
+    # Main marker circle with white border
+    ax.scatter(
+        web_lon, web_lat,
+        color=color,
+        s=800,
+        zorder=4,
+        edgecolor='white',
+        linewidth=3,
+        marker='o',
+        alpha=0.9
+    )
+    
+    # Inner white dot
+    ax.scatter(
+        web_lon, web_lat,
+        color='white',
+        s=300,
+        zorder=5,
+        marker='o',
+        alpha=0.8
+    )
+    
+    # Center dot with lake color
+    ax.scatter(
+        web_lon, web_lat,
+        color=color,
+        s=100,
+        zorder=6,
+        marker='o',
+        alpha=0.9
+    )
+    
+    # Get box offset
+    if lake in BOX_OFFSETS:
+        box_x, box_y = BOX_OFFSETS[lake]
+    else:
+        box_x, box_y = 20, -30
+    
+    # Create information text
+    info_text = (
+        f"📍 {lake}\n"
+        f"─────────────────\n"
+        f"Sites: {info.get('Number of sites', 'N/A')}\n"
+        f"Samples: {info.get('Samples', 'N/A')}"
+    )
+    
+    # Add information box
+    ax.annotate(
+        info_text,
+        xy=(web_lon, web_lat),
+        xytext=(box_x, box_y),
+        textcoords="offset points",
+        fontsize=9,
+        fontweight='bold',
+        color='#1a1a1a',
+        linespacing=1.5,
+        bbox=dict(
+            boxstyle="round,pad=0.7",
+            facecolor='white',
+            edgecolor=color,
+            alpha=0.95,
+            linewidth=2.2
+        ),
+        zorder=7,
+        verticalalignment='top',
+        horizontalalignment='left',
+        arrowprops=dict(
+            arrowstyle='->',
+            color=color,
+            lw=1.5,
+            alpha=0.6
+        )
+    )
+
+# ------------------------------------------------------------------
+# 7) KAUNAS RESERVOIR INSET — with real map tiles
+# ------------------------------------------------------------------
+
+KAUNAS_SITES = [
+    ("Paplūdimys",   54.875404, 24.016306),
+    ("Jacht klubas", 54.884804, 24.023364),
+    ("Grabučiškės",  54.893046, 24.145825),
+]
+
+kr_color = lake_colors["Kaunas Reservoir"]
+
+# Create inset axes
+inset_ax = ax.inset_axes([0.02, 0.02, 0.32, 0.32])
+
+# Add basemap tiles to inset
+try:
+    # Create temporary GeoDataFrame for the inset area
+    kaunas_bounds = [-0.4, -0.45, 0.35, 0.2]
+    ctx.add_basemap(
+        inset_ax,
+        crs="EPSG:3857",
+        source=ctx.providers.OpenStreetMap.Mapnik,
+        zoom=11,
+        alpha=0.95
+    )
+except:
+    inset_ax.set_facecolor("#E8F4F8")
+
+# Plot Lithuania boundary in inset for context
+lithuania_web.plot(
+    ax=inset_ax,
+    facecolor='none',
+    edgecolor='#1a1a1a',
+    linewidth=0.8,
+    alpha=0.6,
+    zorder=1,
+)
+
+SITE_OFFSETS = {
+    "Paplūdimys":   (0, -18),
+    "Jacht klubas": (0, 14),
+    "Grabučiškės":  (0, 14),
+}
+
+# Plot the three Kaunas Reservoir sampling sites
+for site, lat, lon in KAUNAS_SITES:
+    # Convert to Web Mercator
+    web_lon, web_lat = transformer.transform(lon, lat)
+    
+    inset_ax.scatter(
+        web_lon, web_lat,
+        color=kr_color,
+        s=350,
+        edgecolor="white",
+        linewidth=2.2,
+        zorder=5,
+        alpha=0.9
+    )
+    
+    inset_ax.scatter(
+        web_lon, web_lat,
+        color='white',
+        s=120,
+        zorder=5.5,
+        alpha=0.7
+    )
+    
+    inset_ax.annotate(
+        site,
+        xy=(web_lon, web_lat),
+        xytext=SITE_OFFSETS.get(site, (9, -9)),
+        textcoords="offset points",
+        fontsize=8,
+        fontweight="bold",
+        color="#1a1a1a",
+        bbox=dict(
+            boxstyle="round,pad=0.4",
+            facecolor="white",
+            edgecolor=kr_color,
+            linewidth=1.3,
+            alpha=0.95,
+        ),
+        zorder=6,
+    )
+
+# Set zoom extent for inset
+kx0_4326 = min(lon for _, _, lon in KAUNAS_SITES) - 0.055
+kx1_4326 = max(lon for _, _, lon in KAUNAS_SITES) + 0.060
+ky0_4326 = min(lat for _, lat, _ in KAUNAS_SITES) - 0.050
+ky1_4326 = max(lat for _, lat, _ in KAUNAS_SITES) + 0.045
+
+# Convert bounds to Web Mercator
+kx0, ky0 = transformer.transform(kx0_4326, ky0_4326)
+kx1, ky1 = transformer.transform(kx1_4326, ky1_4326)
+
+inset_ax.set_xlim(kx0, kx1)
+inset_ax.set_ylim(ky0, ky1)
+inset_ax.set_xticks([])
+inset_ax.set_yticks([])
+
+inset_ax.set_title(
+    "Kaunas Reservoir\n(Detailed View)",
+    fontsize=9,
+    fontweight="bold",
+    color="#1a1a1a",
+    pad=6,
+)
+
+# Border for inset
+for spine in inset_ax.spines.values():
+    spine.set_visible(True)
+    spine.set_linewidth(2.5)
+    spine.set_edgecolor(kr_color)
+
+# Draw zoom rectangle on main map
+from matplotlib.patches import Rectangle
+zoom_rect = Rectangle(
+    (kx0, ky0), kx1 - kx0, ky1 - ky0,
+    fill=False,
+    edgecolor=kr_color,
+    linewidth=2.0,
+    linestyle="--",
+    zorder=8,
+    alpha=0.8
+)
+ax.add_patch(zoom_rect)
+
+# Add connecting lines
+ax.plot([kx0, kx1], [ky0, ky0], color=kr_color, linewidth=1.5, linestyle='--', zorder=3, alpha=0.6)
+
+# ------------------------------------------------------------------
+# 8) Add title and legend
+# ------------------------------------------------------------------
+fig.suptitle(
+    'Lithuanian Lakes - Sampling Sites',
+    fontsize=18,
+    fontweight='bold',
+    y=0.98
+)
+
+# Create custom legend
+legend_elements = [
+    Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=10, 
+           markeredgecolor='white', markeredgewidth=2, label=lake)
+    for lake, color in lake_colors.items()
+]
+
+ax.legend(
+    handles=legend_elements,
+    loc='upper right',
+    fontsize=9,
+    framealpha=0.95,
+    edgecolor='#1a1a1a',
+    fancybox=True,
+    shadow=True
+)
+
+# ------------------------------------------------------------------
+# 9) Save and display
+# ------------------------------------------------------------------
+plt.tight_layout()
+
+# Save BEFORE showing
+plt.savefig("lithuania_lakes_map.png", dpi=300, bbox_inches='tight')
+print("✅ Map saved as 'lithuania_lakes_map.png'")
+
+plt.savefig("lithuania_lakes_map_hq.png", dpi=600, bbox_inches='tight')
+print("✅ High-quality map saved as 'lithuania_lakes_map_hq.png'")
+
+plt.show()
