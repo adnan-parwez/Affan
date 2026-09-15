@@ -168,9 +168,7 @@ def _filter_lithuania_boundary(data, source):
     )
 
 
-try:
-    lithuania = gpd.read_file("baltic_context.geojson")
-except BOUNDARY_READ_ERRORS:
+def _load_lithuania_boundary_from_remote_sources():
     print("Loading Lithuania boundary from online sources...")
     last_error = BoundaryDataError(
         "Unable to load Lithuania boundary from online sources."
@@ -178,31 +176,21 @@ except BOUNDARY_READ_ERRORS:
     for source in (NATURAL_EARTH_COUNTRIES_URL, LITHUANIA_GEOJSON_URL):
         try:
             candidate = gpd.read_file(source)
-            lithuania = _filter_lithuania_boundary(candidate, source)
+            return _filter_lithuania_boundary(candidate, source)
         except BOUNDARY_LOAD_ERRORS as error:
             last_error = error
-        else:
-            break
-    else:
-        raise last_error
+    raise last_error
+
+
+try:
+    lithuania = gpd.read_file("baltic_context.geojson")
+except BOUNDARY_READ_ERRORS:
+    lithuania = _load_lithuania_boundary_from_remote_sources()
 else:
     try:
         lithuania = _filter_lithuania_boundary(lithuania, "baltic_context.geojson")
     except BoundaryDataError:
-        print("Loading Lithuania boundary from online sources...")
-        last_error = BoundaryDataError(
-            "Unable to load Lithuania boundary from online sources."
-        )
-        for source in (NATURAL_EARTH_COUNTRIES_URL, LITHUANIA_GEOJSON_URL):
-            try:
-                candidate = gpd.read_file(source)
-                lithuania = _filter_lithuania_boundary(candidate, source)
-            except BOUNDARY_LOAD_ERRORS as error:
-                last_error = error
-            else:
-                break
-        else:
-            raise last_error
+        lithuania = _load_lithuania_boundary_from_remote_sources()
 
 # Convert to Web Mercator for contextily
 lithuania_web = lithuania.to_crs(epsg=3857)
