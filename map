@@ -116,6 +116,9 @@ for error_type in (DriverError, FionaValueError, DataSourceError):
     if error_type is not None:
         BOUNDARY_LOAD_ERRORS.append(error_type)
 BOUNDARY_LOAD_ERRORS = tuple(BOUNDARY_LOAD_ERRORS)
+BOUNDARY_READ_ERRORS = tuple(
+    error_type for error_type in BOUNDARY_LOAD_ERRORS if error_type is not BoundaryDataError
+)
 
 
 def _filter_lithuania_boundary(data, source):
@@ -147,10 +150,8 @@ def _filter_lithuania_boundary(data, source):
 
 
 try:
-    lithuania = _filter_lithuania_boundary(
-        gpd.read_file("baltic_context.geojson"), "baltic_context.geojson"
-    )
-except BOUNDARY_LOAD_ERRORS:
+    lithuania = gpd.read_file("baltic_context.geojson")
+except BOUNDARY_READ_ERRORS:
     print("Loading Lithuania boundary from online sources...")
     last_error = None
     for source in (NATURAL_EARTH_COUNTRIES_URL, LITHUANIA_GEOJSON_URL):
@@ -162,6 +163,8 @@ except BOUNDARY_LOAD_ERRORS:
             break
     else:
         raise last_error
+else:
+    lithuania = _filter_lithuania_boundary(lithuania, "baltic_context.geojson")
 
 # Convert to Web Mercator for contextily
 lithuania_web = lithuania.to_crs(epsg=3857)
